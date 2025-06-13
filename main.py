@@ -80,28 +80,33 @@ class StockMatcherApp:
             return
 
         stock = self.stock_df.copy()
-        inv = self.invoice_df.copy()
-        for df in (stock, inv):
+        invoice = self.invoice_df.copy()
+
+        for df in (stock, invoice):
             if QTY_COL not in df.columns:
                 df[QTY_COL] = 1
 
-        result_rows = []
+        taken_rows = []  # Сюда будем добавлять все взятые позиции
 
-        for _, row in inv.iterrows():
+        for _, row in invoice.iterrows():
             product = str(row[PRODUCT_COL]).strip()
-            req_qty = float(row[QTY_COL])
-            available = stock.loc[stock[PRODUCT_COL] == product, QTY_COL].sum()
+            need_qty = float(row[QTY_COL])
 
-            take_qty = min(available, req_qty)
-            shortfall = req_qty - take_qty
-            alt_list = []
+            self.log_write(f"{product}: требуется {need_qty}\n")
+
+            # --- сначала пробуем точное совпадение ---
+            mask_exact = stock[PRODUCT_COL] == product
+            available = stock.loc[mask_exact, QTY_COL].sum()
+            take_qty = min(available, need_qty)
 
             if take_qty > 0:
-                alt_list.append({"Product": product, "Taken": take_qty})
-                idx_exact = stock[stock[PRODUCT_COL] == product].index
-                stock.loc[idx_exact, QTY_COL] -= take_qty
+                taken_rows.append({PRODUCT_COL: product, QTY_COL: take_qty})
+                stock.loc[mask_exact, QTY_COL] -= take_qty
+                need_qty -= take_qty
+                self.log_write(f"  - взяли {take_qty} с точным совпадением\n")
 
-            if shortfall > 0:
+            # --- ищем похожие позиции, если не хватило ---
+            if need_qty > 0:
                 candidates = stock[stock[QTY_COL] > 0]
                 mask = candidates[PRODUCT_COL].str.contains(product.split()[0], case=False, na=False)
                 alt_candidates = candidates[mask]
@@ -112,27 +117,27 @@ class StockMatcherApp:
                     top_matches = ratios.nlargest(5).index
                     alt_candidates = candidates.loc[top_matches]
 
-                for _, alt in alt_candidates.iterrows():
-                    if shortfall <= 0:
+                for idx, alt in alt_candidates.iterrows():
+                    if need_qty <= 0:
                         break
                     alt_available = alt[QTY_COL]
-                    take_alt = min(alt_available, shortfall)
-                    alt_list.append({"Product": alt[PRODUCT_COL], "Taken": take_alt})
-                    shortfall -= take_alt
-                    stock.loc[alt.name, QTY_COL] -= take_alt
+                    take_alt = min(alt_available, need_qty)
+                    taken_rows.append({PRODUCT_COL: alt[PRODUCT_COL], QTY_COL: take_alt})
+                    stock.loc[idx, QTY_COL] -= take_alt
+                    need_qty -= take_alt
+                    self.log_write(f"  - взяли {take_alt} из '{alt[PRODUCT_COL]}'\n")
 
-            result_rows.append({
-                "Исходный товар": product,
-                "Запрошено": req_qty,
-                "Подобранное позиционирование": "; ".join(f"{a['Product']} x{a['Taken']}" for a in alt_list),
-                "Итого отгружено": sum(a["Taken"] for a in alt_list),
-                "Не закрыто": max(0, req_qty - sum(a["Taken"] for a in alt_list))
-            })
+            if need_qty > 0:
+                self.log_write(f"  - не удалось закрыть {need_qty} единиц\n")
 
-            self.log_write(
-                f"{product}: нужно {req_qty} | отдали {req_qty - shortfall} | осталось закрыть {shortfall}\n")
+        # Группируем одинаковые товары для финального счёта
+        if taken_rows:
+            result = pd.DataFrame(taken_rows).groupby(PRODUCT_COL, as_index=False)[QTY_COL].sum()
+        else:
+            result = pd.DataFrame(columns=[PRODUCT_COL, QTY_COL])
 
-        self.result_df = pd.DataFrame(result_rows)
+        self.result_df = result
+        self.stock_df = stock  # обновляем остатки после отбора
         self.log_write("=== Подбор завершён ===\n")
 
     # ---------- Сохранение ----------
