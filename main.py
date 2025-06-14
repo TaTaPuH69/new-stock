@@ -3,6 +3,16 @@ from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
 import pandas as pd
 import difflib
+import re
+
+def numeric_clean(series: pd.Series) -> pd.Series:
+    return (
+        series.astype(str)
+              .str.replace(r"\s+", "", regex=True)
+              .str.replace(",", ".", regex=False)
+              .pipe(pd.to_numeric, errors="coerce")
+              .fillna(0)
+    )
 
 PRODUCT_COL = "Товар"
 QTY_COL = "Количество"
@@ -47,7 +57,7 @@ class StockMatcherApp:
 
             clean_df = pd.DataFrame({
                 "Товар": self.stock_df[col_name],
-                "Количество": self.stock_df[col_count]
+                "Количество": numeric_clean(self.stock_df[col_count]),
             })
 
             self.stock_df = clean_df
@@ -65,8 +75,7 @@ class StockMatcherApp:
             self.invoice_path = Path(path)
             self.invoice_df = pd.read_excel(path, header=16, nrows=10)
 
-            name_account = self.invoice_df["Товар"]
-            quantity_account = self.invoice_df["Количество"]
+            self.invoice_df[QTY_COL] = numeric_clean(self.invoice_df[QTY_COL])
 
             self.log_write(f"✅ Счёт загружен: {self.invoice_path.name} | {len(self.invoice_df)} строк\n")
             self.process()
