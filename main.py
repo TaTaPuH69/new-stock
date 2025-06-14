@@ -1,28 +1,20 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
-import pandas as pd
-import difflib
-import re
-
-def numeric_clean(series: pd.Series) -> pd.Series:
-    return (
-        series.astype(str)
-              .str.replace(r"\s+", "", regex=True)
-              .str.replace(",", ".", regex=False)
-              .pipe(pd.to_numeric, errors="coerce")
-              .fillna(0)
-    )
-
-PRODUCT_COL = "Товар"
-QTY_COL = "Количество"
-
-class StockMatcherApp:
-    def __init__(self, master: tk.Tk):
-        self.master = master
-        master.title("Codex Stock Matcher")
-        master.geometry("800x500")
-
+def numeric_clean(s: pd.Series) -> pd.Series:
+    """Строки '1\u202f000', '—', 'Итого' -> float. Всё лишнее = 0."""
+        s.astype(str)
+         .str.replace(r"\s+", "", regex=True)
+         .str.replace(",", ".", regex=False)
+         .pipe(pd.to_numeric, errors="coerce")
+         .fillna(0)
+        try:
+            self.stock_df = pd.read_excel(path)
+            self.stock_df[QTY_COL] = numeric_clean(self.stock_df[QTY_COL])
+            self.log_write(f"✅ Остатки загружены: {Path(path).name} | {len(self.stock_df)} строк\n")
+        except Exception as e:
+            messagebox.showerror("Ошибка загрузки", str(e))
+            self.invoice_df = pd.read_excel(path)
         # Данные
         self.stock_df: pd.DataFrame | None = None
         self.invoice_df: pd.DataFrame | None = None
