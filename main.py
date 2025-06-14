@@ -99,7 +99,7 @@ class StockMatcherApp:
 
         for _, row in invoice.iterrows():
             product = str(row[PRODUCT_COL]).strip()
-            need_qty = row[QTY_COL]
+            need_qty = float(row[QTY_COL])
 
             self.log_write(f"{product}: требуется {need_qty}\n")
 
